@@ -1,0 +1,82 @@
+---
+title: "P8108_final_project_p3"
+author: "Zihan Wu"
+date: "2024-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE, waring = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(survminer)
+library(tidyverse)
+library(rms)
+library(car)
+heart_failure_data <- read_csv("heart_failure_clinical_records_dataset.csv")
+```
+```{r}
+# initial cox model
+cox_full <- coxph(Surv(time, DEATH_EVENT) ~ age + anaemia + creatinine_phosphokinase + diabetes + ejection_fraction + high_blood_pressure + platelets + serum_creatinine + serum_sodium + sex + smoking, data = heart_failure_data)
+
+# check non-linear relationships
+par(mfrow=c(2,3))
+continuous_vars <- c("age", "creatinine_phosphokinase", "ejection_fraction", 
+                    "platelets", "serum_creatinine", "serum_sodium")
+
+for(var in continuous_vars) {
+    mart_res <- residuals(cox_full, type="martingale")
+    plot(heart_failure_data[[var]], mart_res,
+         xlab=var, ylab="Martingale Residuals",
+         main=paste("Residuals vs", var))
+    lines(lowess(heart_failure_data[[var]], mart_res), col="red")
+}
+```
+
+Based on the Martingale residual plots analysis, we found non-linear relationships with the outcome in four continuous variables: creatinine_phosphokinase, and serum_creatinine, suggesting these variables need transformations for the Cox model.
+
+```{r}
+# transform non-linear
+heart_failure_data <- heart_failure_data %>%
+  mutate(
+    log_cp = log(creatinine_phosphokinase),
+    log_serum_creatinine = log(serum_creatinine)
+  )
+# initial model with transformed and linear variables
+cox_full <- coxph(
+  Surv(time, DEATH_EVENT) ~ age + log_cp + ejection_fraction + 
+    platelets + log_serum_creatinine + serum_sodium +
+    anaemia + diabetes + high_blood_pressure + sex + smoking,
+  data = heart_failure_data
+)
+#backward stepwise
+cox_backward <- step(cox_full, direction = "backward")
+#forward stepwise
+cox_null <- coxph(Surv(time, DEATH_EVENT) ~ 1, data = heart_failure_data)
+cox_forward <- step(cox_null, 
+                   scope = ~ age + log_cp + ejection_fraction + 
+                     platelets + log_serum_creatinine + serum_sodium +
+                     anaemia + diabetes + high_blood_pressure + sex + smoking,
+                   direction = "forward")
+# interactions
+cox_interaction <- coxph(
+  Surv(time, DEATH_EVENT) ~ age + log_cp + ejection_fraction + 
+    log_serum_creatinine + serum_sodium +
+    age:ejection_fraction + age:log_serum_creatinine,
+  data = heart_failure_data
+)
+# compare
+aic_comparison <- AIC(cox_full, cox_backward, cox_forward, cox_interaction)
+print(aic_comparison)
+# cox_forward & backward least AIC
+# all age ejection_fraction log_serum_creatinine anaemia high_blood_pressure
+# model's variable significance
+final_model <- cox_forward
+summary(final_model)
+
+# VIF test for final selected variables
+vif(lm(time ~ age + ejection_fraction + log_serum_creatinine + 
+       anaemia + high_blood_pressure,
+       data = heart_failure_data))
+```
+All VIF values are close to 1 (range: 1.01-1.08)
+No multicollinearity issues
