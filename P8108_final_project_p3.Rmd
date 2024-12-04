@@ -12,6 +12,7 @@ library(survminer)
 library(tidyverse)
 library(rms)
 library(car)
+library(MASS)
 heart_failure_data <- read_csv("heart_failure_clinical_records_dataset.csv")
 ```
 ```{r}
@@ -57,6 +58,14 @@ cox_forward <- step(cox_null,
                      platelets + log_serum_creatinine + serum_sodium +
                      anaemia + diabetes + high_blood_pressure + sex + smoking,
                    direction = "forward")
+
+# Perform stepwise selection using stepAIC
+step_model <- stepAIC(cox_full, 
+                     direction = "both",    
+                     trace = TRUE)          
+
+# View final model
+summary(step_model)
 # interactions
 cox_interaction <- coxph(
   Surv(time, DEATH_EVENT) ~ age + log_cp + ejection_fraction + 
@@ -80,3 +89,4 @@ vif(lm(time ~ age + ejection_fraction + log_serum_creatinine +
 ```
 All VIF values are close to 1 (range: 1.01-1.08)
 No multicollinearity issues
+age ejection_fraction log_serum_creatinine anaemia high_blood_pressure
