@@ -1,0 +1,442 @@
+---
+title: "P8108_final_project_p3"
+author: "Zihan Wu"
+date: "2024-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE, waring = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(survminer)
+library(tidyverse)
+library(car)
+library(MASS)
+heart_failure_data <- read_csv("C:/Users/Lenovo/Downloads/heart_failure_clinical_records_dataset.csv")
+```
+
+```{r}
+heart_failure_data$high_blood_pressure <- as.factor(heart_failure_data$high_blood_pressure)
+heart_failure_data$anaemia <- as.factor(heart_failure_data$anaemia)
+heart_failure_data$diabetes <- as.factor(heart_failure_data$diabetes)
+heart_failure_data$sex <- as.factor(heart_failure_data$sex)
+
+heart_failure_data <- heart_failure_data %>%
+  mutate(
+    log_cp = log(creatinine_phosphokinase),
+    log_serum_creatinine = log(serum_creatinine)
+  )
+```
+
+```{r}
+# initial cox model
+cox_full <- coxph(Surv(time, DEATH_EVENT) ~ age + anaemia + creatinine_phosphokinase + diabetes + ejection_fraction + high_blood_pressure + platelets + serum_creatinine + serum_sodium + sex + smoking, data = heart_failure_data)
+
+# check non-linear relationships
+par(mfrow=c(2,3))
+continuous_vars <- c("age", "creatinine_phosphokinase", "ejection_fraction", 
+                    "platelets", "serum_creatinine", "serum_sodium")
+
+for(var in continuous_vars) {
+    mart_res <- residuals(cox_full, type="martingale")
+    plot(heart_failure_data[[var]], mart_res,
+         xlab=var, ylab="Martingale Residuals",
+         main=paste("Residuals vs", var))
+    lines(lowess(heart_failure_data[[var]], mart_res), col="red")
+}
+```
+
+Based on the Martingale residual plots analysis, we found non-linear relationships with the outcome in four continuous variables: creatinine_phosphokinase, and serum_creatinine, suggesting these variables need transformations for the Cox model.
+
+### Cox
+
+```{r}
+# transform non-linear
+
+# initial model with transformed and linear variables
+# select covariates with alpha = 0.2
+coxph(
+  Surv(time, DEATH_EVENT) ~ age,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ log_cp,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ ejection_fraction,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ platelets,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ anaemia,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ log_serum_creatinine,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ serum_sodium,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ diabetes,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ high_blood_pressure,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ sex,
+  data = heart_failure_data
+)
+
+coxph(
+  Surv(time, DEATH_EVENT) ~ smoking,
+  data = heart_failure_data
+)
+
+# age ejection_fraction anaemia log_serum_creatinine serum_sodium high_blood_pressure
+```
+
+```{r}
+
+# Define the Cox proportional hazards model
+cox_full <- coxph(
+  Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
+  data = heart_failure_data
+)
+
+cox_backward <- step(cox_full, direction = "backward")
+# out:serum_sodium
+summary(cox_backward)
+```
+
+```{r}
+#forward stepwise
+cox_null <- coxph(Surv(time, DEATH_EVENT) ~ 1, data = heart_failure_data)
+cox_forward <- step(cox_null, 
+                   scope = ~ age + log_cp + ejection_fraction + 
+                     platelets + log_serum_creatinine + serum_sodium +
+                     anaemia + diabetes + high_blood_pressure + sex + smoking,
+                   direction = "forward")
+summary(cox_forward)
+```
+
+```{r}
+# interactions
+
+cox_interaction <- coxph(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    ejection_fraction +
+    log_serum_creatinine +
+    age * high_blood_pressure +
+    age * anaemia +
+    age * ejection_fraction +
+    age * log_serum_creatinine +
+    high_blood_pressure * anaemia +
+    high_blood_pressure * ejection_fraction +
+    high_blood_pressure * log_serum_creatinine +
+    anaemia * ejection_fraction +
+    anaemia * log_serum_creatinine +
+    ejection_fraction * log_serum_creatinine,
+  data = heart_failure_data
+)
+
+cox_int <- stepAIC(
+  cox_interaction, 
+  direction = "both", 
+  trace = TRUE
+)
+
+summary(cox_int)
+```
+
+```{r}
+aic_comparison <- AIC(cox_full, cox_backward, cox_forward, cox_int)
+print(aic_comparison)
+
+# VIF test for final selected variables
+vif(lm(time ~ age + ejection_fraction + log_serum_creatinine + 
+       anaemia + high_blood_pressure + age*ejection_fraction + ejection_fraction*log_serum_creatinine,
+       data = heart_failure_data),type = 'predictor')
+```
+All VIF values are close to 1 (range: 1.01-1.08)
+No multicollinearity issues
+age ejection_fraction log_serum_creatinine anaemia high_blood_pressure
+
+### AFT
+```{r}
+survreg(
+  Surv(time, DEATH_EVENT) ~ age,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_cp,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ ejection_fraction,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ platelets,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_serum_creatinine,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ serum_sodium,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ anaemia,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ diabetes,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ high_blood_pressure,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ sex,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ smoking,
+  dist = "weibull",
+  data = heart_failure_data
+)
+ 
+# high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
+```
+
+```{r}
+weibull_full <- 
+survreg(
+  Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
+  dist = "weibull",
+  data = heart_failure_data
+)
+
+weib_backward <- step(weibull_full, direction = "backward")
+summary(weib_backward)
+# out:serum_sodium
+```
+
+```{r}
+#forward stepwise
+weibull_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "weibull", data = heart_failure_data)
+weib_forward <- step(weibull_null, 
+                   scope = ~ age + log_cp + ejection_fraction + 
+                     platelets + log_serum_creatinine + serum_sodium +
+                     anaemia + diabetes + high_blood_pressure + sex + smoking,
+,data = heart_failure_data,
+                   direction = "forward")
+
+summary(weib_forward)
+```
+
+```{r}
+weib_interaction <- survreg(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    ejection_fraction +
+    log_serum_creatinine +
+    age * high_blood_pressure +
+    age * anaemia +
+    age * ejection_fraction +
+    age * log_serum_creatinine +
+    high_blood_pressure * anaemia +
+    high_blood_pressure * ejection_fraction +
+    high_blood_pressure * log_serum_creatinine +
+    anaemia * ejection_fraction +
+    anaemia * log_serum_creatinine +
+    ejection_fraction * log_serum_creatinine,
+  dist = "weibull",
+  data = heart_failure_data
+)
+weib_int <- stepAIC(weib_interaction, direction = "both")
+summary(weib_int)
+```
+
+```{r}
+survreg(
+  Surv(time, DEATH_EVENT) ~ age,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_cp,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ ejection_fraction,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ platelets,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_serum_creatinine,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ serum_sodium,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ anaemia,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ diabetes,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ high_blood_pressure,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ sex,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ smoking,
+  dist = "exponential",
+  data = heart_failure_data
+)
+ 
+# high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
+```
+
+```{r}
+exponential_full <- 
+survreg(
+  Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
+  dist = "exponential",
+  data = heart_failure_data
+)
+
+exp_backward <- step(exponential_full, direction = "backward")
+summary(exp_backward)
+# out:serum_sodium
+```
+
+```{r}
+#forward stepwise
+exponential_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "exponential", data = heart_failure_data)
+exp_forward <- step(exponential_null, 
+                   scope = ~ age + log_cp + ejection_fraction + 
+                     platelets + log_serum_creatinine + serum_sodium +
+                     anaemia + diabetes + high_blood_pressure + sex + smoking,
+,data = heart_failure_data,
+                   direction = "forward")
+
+summary(exp_forward)
+```
+
+```{r}
+exp_interaction <- survreg(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    ejection_fraction +
+    log_serum_creatinine +
+    age * high_blood_pressure +
+    age * anaemia +
+    age * ejection_fraction +
+    age * log_serum_creatinine +
+    high_blood_pressure * anaemia +
+    high_blood_pressure * ejection_fraction +
+    high_blood_pressure * log_serum_creatinine +
+    anaemia * ejection_fraction +
+    anaemia * log_serum_creatinine +
+    ejection_fraction * log_serum_creatinine,
+  dist = "exponential",
+  data = heart_failure_data
+)
+exp_int <- stepAIC(exp_interaction, direction = "both")
+summary(exp_int)
+```
+
+All the same covariates.
+
+```{r}
+aic_cox <- AIC(cox_full, cox_backward, cox_forward, cox_int)
+print(aic_cox)
+
+aic_weib <- AIC(weibull_full,weib_forward, weib_backward, weib_int)
+print(aic_weib)
+
+aic_exp <- AIC(exponential_full, exp_forward, exp_backward, exp_int)
+print(aic_exp)
+```
+
+```{r}
+AIC(exp_int,cox_int,weib_int)
+```
