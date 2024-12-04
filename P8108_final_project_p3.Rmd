@@ -2,7 +2,7 @@
 title: "P8108_final_project_p3"
 author: "Zihan Wu"
 date: "2024-12-04"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE, waring = F}
