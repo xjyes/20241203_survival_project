@@ -28,26 +28,6 @@ heart_failure_data <- heart_failure_data %>%
   )
 ```
 
-```{r}
-# initial cox model
-cox_full <- coxph(Surv(time, DEATH_EVENT) ~ age + anaemia + creatinine_phosphokinase + diabetes + ejection_fraction + high_blood_pressure + platelets + serum_creatinine + serum_sodium + sex + smoking, data = heart_failure_data)
-
-# check non-linear relationships
-par(mfrow=c(2,3))
-continuous_vars <- c("age", "creatinine_phosphokinase", "ejection_fraction", 
-                    "platelets", "serum_creatinine", "serum_sodium")
-
-for(var in continuous_vars) {
-    mart_res <- residuals(cox_full, type="martingale")
-    plot(heart_failure_data[[var]], mart_res,
-         xlab=var, ylab="Martingale Residuals",
-         main=paste("Residuals vs", var))
-    lines(lowess(heart_failure_data[[var]], mart_res), col="red")
-}
-```
-
-Based on the Martingale residual plots analysis, we found non-linear relationships with the outcome in four continuous variables: creatinine_phosphokinase, and serum_creatinine, suggesting these variables need transformations for the Cox model.
-
 ### Cox
 
 ```{r}
@@ -439,4 +419,326 @@ print(aic_exp)
 
 ```{r}
 AIC(exp_int,cox_int,weib_int)
+```
+
+
+```{r}
+survreg(
+  Surv(time, DEATH_EVENT) ~ age,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_cp,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ ejection_fraction,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ platelets,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_serum_creatinine,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ serum_sodium,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ anaemia,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ diabetes,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ high_blood_pressure,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ sex,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ smoking,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+ 
+# high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
+```
+
+```{r}
+loglogistic_full <- 
+survreg(
+  Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+
+llog_backward <- step(loglogistic_full, direction = "backward")
+summary(llog_backward)
+# out:serum_sodium
+```
+
+```{r}
+#forward stepwise
+loglogistic_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "loglogistic", data = heart_failure_data)
+llog_forward <- step(loglogistic_null, 
+                   scope = ~ age + log_cp + ejection_fraction + 
+                     platelets + log_serum_creatinine + serum_sodium +
+                     anaemia + diabetes + high_blood_pressure + sex + smoking,
+,data = heart_failure_data,
+                   direction = "forward")
+
+summary(llog_forward)
+```
+
+```{r}
+llog_interaction <- survreg(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    ejection_fraction +
+    log_serum_creatinine +
+    age * high_blood_pressure +
+    age * anaemia +
+    age * ejection_fraction +
+    age * log_serum_creatinine +
+    high_blood_pressure * anaemia +
+    high_blood_pressure * ejection_fraction +
+    high_blood_pressure * log_serum_creatinine +
+    anaemia * ejection_fraction +
+    anaemia * log_serum_creatinine +
+    ejection_fraction * log_serum_creatinine,
+  dist = "loglogistic",
+  data = heart_failure_data
+)
+llog_int <- stepAIC(llog_interaction, direction = "both")
+summary(llog_int)
+```
+
+
+```{r}
+survreg(
+  Surv(time, DEATH_EVENT) ~ age,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_cp,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ ejection_fraction,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ platelets,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ log_serum_creatinine,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ serum_sodium,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ anaemia,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ diabetes,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ high_blood_pressure,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ sex,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+survreg(
+  Surv(time, DEATH_EVENT) ~ smoking,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+ 
+# high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
+```
+
+```{r}
+lognormal_full <- 
+survreg(
+  Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+
+logn_backward <- step(lognormal_full, direction = "backward")
+summary(logn_backward)
+```
+
+```{r}
+#forward stepwise
+lognormal_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "lognormal", data = heart_failure_data)
+logn_forward <- step(lognormal_null, 
+                   scope = ~ age + log_cp + ejection_fraction + 
+                     platelets + log_serum_creatinine + serum_sodium +
+                     anaemia + diabetes + high_blood_pressure + sex + smoking,
+,data = heart_failure_data,
+                   direction = "forward")
+
+summary(logn_forward)
+```
+
+```{r}
+logn_interaction <- survreg(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    ejection_fraction +
+    log_serum_creatinine +
+    serum_sodium+
+    age*serum_sodium+
+    serum_sodium*high_blood_pressure+
+    serum_sodium*anaemia +
+    serum_sodium*ejection_fraction +
+    serum_sodium*log_serum_creatinine +
+    age * high_blood_pressure +
+    age * anaemia +
+    age * ejection_fraction +
+    age * log_serum_creatinine +
+    high_blood_pressure * anaemia +
+    high_blood_pressure * ejection_fraction +
+    high_blood_pressure * log_serum_creatinine +
+    anaemia * ejection_fraction +
+    anaemia * log_serum_creatinine +
+    ejection_fraction * log_serum_creatinine,
+  dist = "lognormal",
+  data = heart_failure_data
+)
+logn_int <- stepAIC(logn_interaction, direction = "both")
+summary(logn_int)
+```
+
+```{r}
+AIC(exp_int,llog_int,logn_int,cox_int,weib_int)
+```
+
+
+```{r}
+surv_obj <- Surv(heart_failure_data$time, heart_failure_data$DEATH_EVENT)
+fit_total <- survfit(surv_obj ~ 1, data = heart_failure_data)
+
+g_total <- ggsurvplot(
+  fit_total, 
+  data = heart_failure_data, 
+  conf.int = FALSE,
+  xlab = "Time", 
+  ylab = "Cumulative Hazard", 
+  ggtheme = theme_minimal(),
+  risk.table = FALSE, 
+  fun = "cumhaz", 
+  main = "Cumulative Hazard (Total)",
+  palette = "black"  
+)
+
+print(g_total)
+
+```
+
+```{r}
+
+# 获取模型摘要
+summary_cox <- summary(cox_int)
+
+# 提取需要的信息
+coefs <- summary_cox$coefficients[, "coef"]
+p_values <- summary_cox$coefficients[, "Pr(>|z|)"]
+exp_coefs <- (summary_cox$conf.int[, "exp(coef)"])
+lower95 <- (summary_cox$conf.int[, "lower .95"])
+upper95 <- (summary_cox$conf.int[, "upper .95"])
+
+# 创建数据框
+df <- data.frame(
+  Coef = coefs,
+  P_Value = p_values,
+  Exp_Coef = exp_coefs,
+  Lower_95_CI = lower95,
+  Upper_95_CI = upper95
+)
+
+# 查看DataFrame
+print(df)
+
+```
+
+```{r}
+exp_summary=summary(exp_int)
+coefficients_vector <- exp_summary$coefficients
+exp_summary$var
+exp_df <- data.frame(
+  Value = -coefficients_vector,
+  SD = sqrt(diag(exp_summary$var)),
+  P = exp_summary[["table"]][, "p"],
+  stringsAsFactors = FALSE  
+)
+exp_df <- exp_df |>
+  mutate(
+    CI_Lower = Value - 1.96 * SD,                  
+    CI_Upper = Value + 1.96 * SD,                 
+    Exp_Value = exp(Value),                        
+    Exp_CI_Lower = exp(CI_Lower),                
+    Exp_CI_Upper = exp(CI_Upper)                  
+  )
+
 ```
