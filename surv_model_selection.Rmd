@@ -1,11 +1,8 @@
 ---
-title: "P8108_final_project_p3"
-author: "Zihan Wu"
-date: "2024-12-04"
-output: html_document
+output:pdf_document
 ---
 
-```{r setup, include=FALSE, waring = F}
+```{r setup, include=FALSE, warning = FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(survival)
 library(survminer)
@@ -13,28 +10,22 @@ library(tidyverse)
 library(car)
 library(MASS)
 heart_failure_data <- read_csv("C:/Users/Lenovo/Downloads/heart_failure_clinical_records_dataset.csv")
-```
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=40), tidy=TRUE)
+knitr::opts_chunk$set(echo = TRUE, results = 'hide',plot='hide')
 
-```{r}
 heart_failure_data$high_blood_pressure <- as.factor(heart_failure_data$high_blood_pressure)
 heart_failure_data$anaemia <- as.factor(heart_failure_data$anaemia)
 heart_failure_data$diabetes <- as.factor(heart_failure_data$diabetes)
 heart_failure_data$sex <- as.factor(heart_failure_data$sex)
 
-heart_failure_data <- heart_failure_data %>%
+heart_failure_data <- heart_failure_data |>
   mutate(
     log_cp = log(creatinine_phosphokinase),
     log_serum_creatinine = log(serum_creatinine)
   )
-```
 
-### Cox
-
-```{r}
-# transform non-linear
-
-# initial model with transformed and linear variables
-# select covariates with alpha = 0.2
+## COX
+### select covariates with alpha = 0.2
 coxph(
   Surv(time, DEATH_EVENT) ~ age,
   data = heart_failure_data
@@ -91,9 +82,6 @@ coxph(
 )
 
 # age ejection_fraction anaemia log_serum_creatinine serum_sodium high_blood_pressure
-```
-
-```{r}
 
 # Define the Cox proportional hazards model
 cox_full <- coxph(
@@ -104,9 +92,7 @@ cox_full <- coxph(
 cox_backward <- step(cox_full, direction = "backward")
 # out:serum_sodium
 summary(cox_backward)
-```
 
-```{r}
 #forward stepwise
 cox_null <- coxph(Surv(time, DEATH_EVENT) ~ 1, data = heart_failure_data)
 cox_forward <- step(cox_null, 
@@ -115,9 +101,7 @@ cox_forward <- step(cox_null,
                      anaemia + diabetes + high_blood_pressure + sex + smoking,
                    direction = "forward")
 summary(cox_forward)
-```
 
-```{r}
 # interactions
 
 cox_interaction <- coxph(
@@ -146,9 +130,7 @@ cox_int <- stepAIC(
 )
 
 summary(cox_int)
-```
 
-```{r}
 aic_comparison <- AIC(cox_full, cox_backward, cox_forward, cox_int)
 print(aic_comparison)
 
@@ -156,13 +138,43 @@ print(aic_comparison)
 vif(lm(time ~ age + ejection_fraction + log_serum_creatinine + 
        anaemia + high_blood_pressure + age*ejection_fraction + ejection_fraction*log_serum_creatinine,
        data = heart_failure_data),type = 'predictor')
-```
-All VIF values are close to 1 (range: 1.01-1.08)
-No multicollinearity issues
-age ejection_fraction log_serum_creatinine anaemia high_blood_pressure
 
-### AFT
-```{r}
+## Time-varying
+
+### selected model with time-varying variable ejection_fraction
+heart_failure_data$log_time <- log(heart_failure_data$time)
+
+cox_time <- coxph(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    #ejection_fraction +
+    log_serum_creatinine +
+    age * ejection_fraction +
+    ejection_fraction * log_time +
+    ejection_fraction * log_serum_creatinine,
+  data = heart_failure_data
+)
+
+summary(cox_time)
+
+AIC(cox_time)
+
+# piecewise cox model
+
+heart_failure_data$time_group <- cut(heart_failure_data$time, 
+                                     breaks=c(0, 100, 200, Inf), 
+                                     labels=c("0-100", "100-200", ">200"))
+
+
+cox_piecewise <- coxph(
+  Surv(time, DEATH_EVENT) ~ age + high_blood_pressure + anaemia +
+  log_serum_creatinine + ejection_fraction * time_group,
+  data = heart_failure_data
+)
+
+## AFT
+### weibull step 1
 survreg(
   Surv(time, DEATH_EVENT) ~ age,
   dist = "weibull",
@@ -231,9 +243,8 @@ survreg(
 )
  
 # high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
-```
 
-```{r}
+### weibull step 2 
 weibull_full <- 
 survreg(
   Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
@@ -244,11 +255,10 @@ survreg(
 weib_backward <- step(weibull_full, direction = "backward")
 summary(weib_backward)
 # out:serum_sodium
-```
 
-```{r}
-#forward stepwise
-weibull_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "weibull", data = heart_failure_data)
+
+#weibull step 3
+weibull_null <- survreg(Surv(time, DEATH_EVENT) ~ age+ejection_fraction+log_serum_creatinine+anaemia+high_blood_pressure, dist = "weibull", data = heart_failure_data)
 weib_forward <- step(weibull_null, 
                    scope = ~ age + log_cp + ejection_fraction + 
                      platelets + log_serum_creatinine + serum_sodium +
@@ -257,9 +267,8 @@ weib_forward <- step(weibull_null,
                    direction = "forward")
 
 summary(weib_forward)
-```
 
-```{r}
+### Weibull step 4
 weib_interaction <- survreg(
   Surv(time, DEATH_EVENT) ~ age +
     high_blood_pressure +
@@ -281,9 +290,8 @@ weib_interaction <- survreg(
 )
 weib_int <- stepAIC(weib_interaction, direction = "both")
 summary(weib_int)
-```
 
-```{r}
+### exponential 1
 survreg(
   Surv(time, DEATH_EVENT) ~ age,
   dist = "exponential",
@@ -352,9 +360,8 @@ survreg(
 )
  
 # high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
-```
 
-```{r}
+### exponential 2
 exponential_full <- 
 survreg(
   Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
@@ -365,11 +372,9 @@ survreg(
 exp_backward <- step(exponential_full, direction = "backward")
 summary(exp_backward)
 # out:serum_sodium
-```
 
-```{r}
-#forward stepwise
-exponential_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "exponential", data = heart_failure_data)
+### exponential step 3
+exponential_null <- survreg(Surv(time, DEATH_EVENT) ~  age+ejection_fraction+log_serum_creatinine+anaemia+high_blood_pressure, dist = "exponential", data = heart_failure_data)
 exp_forward <- step(exponential_null, 
                    scope = ~ age + log_cp + ejection_fraction + 
                      platelets + log_serum_creatinine + serum_sodium +
@@ -378,9 +383,8 @@ exp_forward <- step(exponential_null,
                    direction = "forward")
 
 summary(exp_forward)
-```
 
-```{r}
+### exponential step 4
 exp_interaction <- survreg(
   Surv(time, DEATH_EVENT) ~ age +
     high_blood_pressure +
@@ -402,27 +406,8 @@ exp_interaction <- survreg(
 )
 exp_int <- stepAIC(exp_interaction, direction = "both")
 summary(exp_int)
-```
 
-All the same covariates.
-
-```{r}
-aic_cox <- AIC(cox_full, cox_backward, cox_forward, cox_int)
-print(aic_cox)
-
-aic_weib <- AIC(weibull_full,weib_forward, weib_backward, weib_int)
-print(aic_weib)
-
-aic_exp <- AIC(exponential_full, exp_forward, exp_backward, exp_int)
-print(aic_exp)
-```
-
-```{r}
-AIC(exp_int,cox_int,weib_int)
-```
-
-
-```{r}
+### log-logistic step 1
 survreg(
   Surv(time, DEATH_EVENT) ~ age,
   dist = "loglogistic",
@@ -491,9 +476,7 @@ survreg(
 )
  
 # high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
-```
-
-```{r}
+### log-logistic step 2
 loglogistic_full <- 
 survreg(
   Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
@@ -504,11 +487,9 @@ survreg(
 llog_backward <- step(loglogistic_full, direction = "backward")
 summary(llog_backward)
 # out:serum_sodium
-```
 
-```{r}
-#forward stepwise
-loglogistic_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "loglogistic", data = heart_failure_data)
+### log-logistic step 3
+loglogistic_null <- survreg(Surv(time, DEATH_EVENT) ~ age+anaemia+log_serum_creatinine+high_blood_pressure+ejection_fraction, dist = "loglogistic", data = heart_failure_data)
 llog_forward <- step(loglogistic_null, 
                    scope = ~ age + log_cp + ejection_fraction + 
                      platelets + log_serum_creatinine + serum_sodium +
@@ -517,9 +498,8 @@ llog_forward <- step(loglogistic_null,
                    direction = "forward")
 
 summary(llog_forward)
-```
 
-```{r}
+### log-logistic step 4
 llog_interaction <- survreg(
   Surv(time, DEATH_EVENT) ~ age +
     high_blood_pressure +
@@ -541,10 +521,8 @@ llog_interaction <- survreg(
 )
 llog_int <- stepAIC(llog_interaction, direction = "both")
 summary(llog_int)
-```
 
-
-```{r}
+### log-normal step 1
 survreg(
   Surv(time, DEATH_EVENT) ~ age,
   dist = "lognormal",
@@ -613,9 +591,8 @@ survreg(
 )
  
 # high_blood_pressure anaemia serum_sodium log_serum_creatinine ejection_fraction age
-```
 
-```{r}
+### log-normal step 2
 lognormal_full <- 
 survreg(
   Surv(time, DEATH_EVENT) ~ age + ejection_fraction + log_serum_creatinine + serum_sodium + anaemia + high_blood_pressure,
@@ -625,11 +602,9 @@ survreg(
 
 logn_backward <- step(lognormal_full, direction = "backward")
 summary(logn_backward)
-```
 
-```{r}
-#forward stepwise
-lognormal_null <- survreg(Surv(time, DEATH_EVENT) ~ 1, dist = "lognormal", data = heart_failure_data)
+#step 3
+lognormal_null <- survreg(Surv(time, DEATH_EVENT) ~ age+anaemia+log_serum_creatinine+ejection_fraction+high_blood_pressure+serum_sodium, dist = "lognormal", data = heart_failure_data)
 logn_forward <- step(lognormal_null, 
                    scope = ~ age + log_cp + ejection_fraction + 
                      platelets + log_serum_creatinine + serum_sodium +
@@ -638,9 +613,8 @@ logn_forward <- step(lognormal_null,
                    direction = "forward")
 
 summary(logn_forward)
-```
 
-```{r}
+### log_normal step 4
 logn_interaction <- survreg(
   Surv(time, DEATH_EVENT) ~ age +
     high_blood_pressure +
@@ -668,14 +642,12 @@ logn_interaction <- survreg(
 )
 logn_int <- stepAIC(logn_interaction, direction = "both")
 summary(logn_int)
-```
 
-```{r}
 AIC(exp_int,llog_int,logn_int,cox_int,weib_int)
-```
 
+# expoential model as AFT model
 
-```{r}
+### exponential model check
 surv_obj <- Surv(heart_failure_data$time, heart_failure_data$DEATH_EVENT)
 fit_total <- survfit(surv_obj ~ 1, data = heart_failure_data)
 
@@ -691,54 +663,5 @@ g_total <- ggsurvplot(
   main = "Cumulative Hazard (Total)",
   palette = "black"  
 )
-
-print(g_total)
-
-```
-
-```{r}
-
-# 获取模型摘要
-summary_cox <- summary(cox_int)
-
-# 提取需要的信息
-coefs <- summary_cox$coefficients[, "coef"]
-p_values <- summary_cox$coefficients[, "Pr(>|z|)"]
-exp_coefs <- (summary_cox$conf.int[, "exp(coef)"])
-lower95 <- (summary_cox$conf.int[, "lower .95"])
-upper95 <- (summary_cox$conf.int[, "upper .95"])
-
-# 创建数据框
-df <- data.frame(
-  Coef = coefs,
-  P_Value = p_values,
-  Exp_Coef = exp_coefs,
-  Lower_95_CI = lower95,
-  Upper_95_CI = upper95
-)
-
-# 查看DataFrame
-print(df)
-
-```
-
-```{r}
-exp_summary=summary(exp_int)
-coefficients_vector <- exp_summary$coefficients
-exp_summary$var
-exp_df <- data.frame(
-  Value = -coefficients_vector,
-  SD = sqrt(diag(exp_summary$var)),
-  P = exp_summary[["table"]][, "p"],
-  stringsAsFactors = FALSE  
-)
-exp_df <- exp_df |>
-  mutate(
-    CI_Lower = Value - 1.96 * SD,                  
-    CI_Upper = Value + 1.96 * SD,                 
-    Exp_Value = exp(Value),                        
-    Exp_CI_Lower = exp(CI_Lower),                
-    Exp_CI_Upper = exp(CI_Upper)                  
-  )
 
 ```
