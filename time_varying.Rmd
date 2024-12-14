@@ -1,0 +1,67 @@
+---
+title: "P8108_final_project_p3"
+author: "Jingyi Xu"
+date: "2024-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE, waring = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(survminer)
+library(tidyverse)
+library(car)
+library(MASS)
+heart_failure_data <- read_csv('/Users/xujingyi/Documents/Columbia/Courses/24 fall/Survival Analysis/final project/heart_failure_clinical_records_dataset.csv')
+```
+
+```{r}
+heart_failure_data$high_blood_pressure <- as.factor(heart_failure_data$high_blood_pressure)
+heart_failure_data$anaemia <- as.factor(heart_failure_data$anaemia)
+heart_failure_data$diabetes <- as.factor(heart_failure_data$diabetes)
+heart_failure_data$sex <- as.factor(heart_failure_data$sex)
+
+heart_failure_data <- heart_failure_data %>%
+  mutate(
+    log_cp = log(creatinine_phosphokinase),
+    log_serum_creatinine = log(serum_creatinine)
+  )
+```
+
+```{r}
+# selected model with time-varying variable ejection_fraction
+heart_failure_data$log_time <- log(heart_failure_data$time)
+
+cox_time <- coxph(
+  Surv(time, DEATH_EVENT) ~ age +
+    high_blood_pressure +
+    anaemia +
+    #ejection_fraction +
+    log_serum_creatinine +
+    age * ejection_fraction +
+    ejection_fraction * log_time +
+    ejection_fraction * log_serum_creatinine,
+  data = heart_failure_data
+)
+
+summary(cox_time)
+
+AIC(cox_time)
+```
+
+```{r}
+# piecewise cox model
+
+heart_failure_data$time_group <- cut(heart_failure_data$time, 
+                                     breaks=c(0, 100, 200, Inf), 
+                                     labels=c("0-100", "100-200", ">200"))
+
+
+cox_piecewise <- coxph(
+  Surv(time, DEATH_EVENT) ~ age + high_blood_pressure + anaemia +
+  log_serum_creatinine + ejection_fraction * time_group,
+  data = heart_failure_data
+)
+
+```
+
